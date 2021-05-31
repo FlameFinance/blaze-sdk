@@ -37,6 +37,8 @@ var _SOLIDITY_TYPE_MAXIMA;
 
 var FACTORY_ADDRESS = '0x640BE2d791620D1BA22647Db5030467C59391b0a';
 var INIT_CODE_HASH = '0x9363e474c355d10437bceb2c0efdcb66c10c172ecb7a3534e857b3e11bd955b7';
+var FACTORY_ADDRESSv2 = '0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73';
+var INIT_CODE_HASHv2 = '0x00fb7f630766e6a796048ea87d01acd3068e8ff67d078148a3fa3f4a84f69bd5';
 var MINIMUM_LIQUIDITY = /*#__PURE__*/JSBI.BigInt(1000); // exports for internal consumption
 
 var ZERO = /*#__PURE__*/JSBI.BigInt(0);
@@ -751,6 +753,7 @@ var Price = /*#__PURE__*/function (_Fraction) {
 }(Fraction);
 
 var PAIR_ADDRESS_CACHE = {};
+var PAIR_ADDRESS_CACHEv2 = {};
 var Pair = /*#__PURE__*/function () {
   function Pair(tokenAmountA, tokenAmountB) {
     var tokenAmounts = tokenAmountA.token.sortsBefore(tokenAmountB.token) // does safety checks
@@ -943,6 +946,199 @@ var Pair = /*#__PURE__*/function () {
   }]);
 
   return Pair;
+}();
+var Pairv2 = /*#__PURE__*/function () {
+  function Pairv2(tokenAmountA, tokenAmountB) {
+    var tokenAmounts = tokenAmountA.token.sortsBefore(tokenAmountB.token) // does safety checks
+    ? [tokenAmountA, tokenAmountB] : [tokenAmountB, tokenAmountA];
+    this.liquidityToken = new Token(tokenAmounts[0].token.chainId, Pair.getAddress(tokenAmounts[0].token, tokenAmounts[1].token), 18, 'UNI-V2', 'Uniswap V2');
+    this.tokenAmounts = tokenAmounts;
+  }
+
+  Pairv2.getAddress = function getAddress(tokenA, tokenB) {
+    var _PAIR_ADDRESS_CACHEv, _PAIR_ADDRESS_CACHEv$;
+
+    var tokens = tokenA.sortsBefore(tokenB) ? [tokenA, tokenB] : [tokenB, tokenA]; // does safety checks
+
+    if (((_PAIR_ADDRESS_CACHEv = PAIR_ADDRESS_CACHEv2) === null || _PAIR_ADDRESS_CACHEv === void 0 ? void 0 : (_PAIR_ADDRESS_CACHEv$ = _PAIR_ADDRESS_CACHEv[tokens[0].address]) === null || _PAIR_ADDRESS_CACHEv$ === void 0 ? void 0 : _PAIR_ADDRESS_CACHEv$[tokens[1].address]) === undefined) {
+      var _PAIR_ADDRESS_CACHEv2, _extends4, _extends5;
+
+      PAIR_ADDRESS_CACHEv2 = _extends({}, PAIR_ADDRESS_CACHEv2, (_extends5 = {}, _extends5[tokens[0].address] = _extends({}, (_PAIR_ADDRESS_CACHEv2 = PAIR_ADDRESS_CACHEv2) === null || _PAIR_ADDRESS_CACHEv2 === void 0 ? void 0 : _PAIR_ADDRESS_CACHEv2[tokens[0].address], (_extends4 = {}, _extends4[tokens[1].address] = address.getCreate2Address(FACTORY_ADDRESSv2, solidity.keccak256(['bytes'], [solidity.pack(['address', 'address'], [tokens[0].address, tokens[1].address])]), INIT_CODE_HASHv2), _extends4)), _extends5));
+    }
+
+    return PAIR_ADDRESS_CACHEv2[tokens[0].address][tokens[1].address];
+  }
+  /**
+   * Returns true if the token is either token0 or token1
+   * @param token to check
+   */
+  ;
+
+  var _proto2 = Pairv2.prototype;
+
+  _proto2.involvesToken = function involvesToken(token) {
+    return token.equals(this.token0) || token.equals(this.token1);
+  }
+  /**
+   * Returns the current mid price of the pair in terms of token0, i.e. the ratio of reserve1 to reserve0
+   */
+  ;
+
+  /**
+   * Return the price of the given token in terms of the other token in the pair.
+   * @param token token to return price of
+   */
+  _proto2.priceOf = function priceOf(token) {
+    !this.involvesToken(token) ?  invariant(false, 'TOKEN')  : void 0;
+    return token.equals(this.token0) ? this.token0Price : this.token1Price;
+  }
+  /**
+   * Returns the chain ID of the tokens in the pair.
+   */
+  ;
+
+  _proto2.reserveOf = function reserveOf(token) {
+    !this.involvesToken(token) ?  invariant(false, 'TOKEN')  : void 0;
+    return token.equals(this.token0) ? this.reserve0 : this.reserve1;
+  };
+
+  _proto2.getOutputAmount = function getOutputAmount(inputAmount) {
+    !this.involvesToken(inputAmount.token) ?  invariant(false, 'TOKEN')  : void 0;
+
+    if (JSBI.equal(this.reserve0.raw, ZERO) || JSBI.equal(this.reserve1.raw, ZERO)) {
+      throw new InsufficientReservesError();
+    }
+
+    var inputReserve = this.reserveOf(inputAmount.token);
+    var outputReserve = this.reserveOf(inputAmount.token.equals(this.token0) ? this.token1 : this.token0);
+    var inputAmountWithFee = JSBI.multiply(inputAmount.raw, FEES_NUMERATOR);
+    var numerator = JSBI.multiply(inputAmountWithFee, outputReserve.raw);
+    var denominator = JSBI.add(JSBI.multiply(inputReserve.raw, FEES_DENOMINATOR), inputAmountWithFee);
+    var outputAmount = new TokenAmount(inputAmount.token.equals(this.token0) ? this.token1 : this.token0, JSBI.divide(numerator, denominator));
+
+    if (JSBI.equal(outputAmount.raw, ZERO)) {
+      throw new InsufficientInputAmountError();
+    }
+
+    return [outputAmount, new Pairv2(inputReserve.add(inputAmount), outputReserve.subtract(outputAmount))];
+  };
+
+  _proto2.getInputAmount = function getInputAmount(outputAmount) {
+    !this.involvesToken(outputAmount.token) ?  invariant(false, 'TOKEN')  : void 0;
+
+    if (JSBI.equal(this.reserve0.raw, ZERO) || JSBI.equal(this.reserve1.raw, ZERO) || JSBI.greaterThanOrEqual(outputAmount.raw, this.reserveOf(outputAmount.token).raw)) {
+      throw new InsufficientReservesError();
+    }
+
+    var outputReserve = this.reserveOf(outputAmount.token);
+    var inputReserve = this.reserveOf(outputAmount.token.equals(this.token0) ? this.token1 : this.token0);
+    var numerator = JSBI.multiply(JSBI.multiply(inputReserve.raw, outputAmount.raw), FEES_DENOMINATOR);
+    var denominator = JSBI.multiply(JSBI.subtract(outputReserve.raw, outputAmount.raw), FEES_NUMERATOR);
+    var inputAmount = new TokenAmount(outputAmount.token.equals(this.token0) ? this.token1 : this.token0, JSBI.add(JSBI.divide(numerator, denominator), ONE));
+    return [inputAmount, new Pairv2(inputReserve.add(inputAmount), outputReserve.subtract(outputAmount))];
+  };
+
+  _proto2.getLiquidityMinted = function getLiquidityMinted(totalSupply, tokenAmountA, tokenAmountB) {
+    !totalSupply.token.equals(this.liquidityToken) ?  invariant(false, 'LIQUIDITY')  : void 0;
+    var tokenAmounts = tokenAmountA.token.sortsBefore(tokenAmountB.token) // does safety checks
+    ? [tokenAmountA, tokenAmountB] : [tokenAmountB, tokenAmountA];
+    !(tokenAmounts[0].token.equals(this.token0) && tokenAmounts[1].token.equals(this.token1)) ?  invariant(false, 'TOKEN')  : void 0;
+    var liquidity;
+
+    if (JSBI.equal(totalSupply.raw, ZERO)) {
+      liquidity = JSBI.subtract(sqrt(JSBI.multiply(tokenAmounts[0].raw, tokenAmounts[1].raw)), MINIMUM_LIQUIDITY);
+    } else {
+      var amount0 = JSBI.divide(JSBI.multiply(tokenAmounts[0].raw, totalSupply.raw), this.reserve0.raw);
+      var amount1 = JSBI.divide(JSBI.multiply(tokenAmounts[1].raw, totalSupply.raw), this.reserve1.raw);
+      liquidity = JSBI.lessThanOrEqual(amount0, amount1) ? amount0 : amount1;
+    }
+
+    if (!JSBI.greaterThan(liquidity, ZERO)) {
+      throw new InsufficientInputAmountError();
+    }
+
+    return new TokenAmount(this.liquidityToken, liquidity);
+  };
+
+  _proto2.getLiquidityValue = function getLiquidityValue(token, totalSupply, liquidity, feeOn, kLast) {
+    if (feeOn === void 0) {
+      feeOn = false;
+    }
+
+    !this.involvesToken(token) ?  invariant(false, 'TOKEN')  : void 0;
+    !totalSupply.token.equals(this.liquidityToken) ?  invariant(false, 'TOTAL_SUPPLY')  : void 0;
+    !liquidity.token.equals(this.liquidityToken) ?  invariant(false, 'LIQUIDITY')  : void 0;
+    !JSBI.lessThanOrEqual(liquidity.raw, totalSupply.raw) ?  invariant(false, 'LIQUIDITY')  : void 0;
+    var totalSupplyAdjusted;
+
+    if (!feeOn) {
+      totalSupplyAdjusted = totalSupply;
+    } else {
+      !!!kLast ?  invariant(false, 'K_LAST')  : void 0;
+      var kLastParsed = parseBigintIsh(kLast);
+
+      if (!JSBI.equal(kLastParsed, ZERO)) {
+        var rootK = sqrt(JSBI.multiply(this.reserve0.raw, this.reserve1.raw));
+        var rootKLast = sqrt(kLastParsed);
+
+        if (JSBI.greaterThan(rootK, rootKLast)) {
+          var numerator = JSBI.multiply(totalSupply.raw, JSBI.subtract(rootK, rootKLast));
+          var denominator = JSBI.add(JSBI.multiply(rootK, FIVE), rootKLast);
+          var feeLiquidity = JSBI.divide(numerator, denominator);
+          totalSupplyAdjusted = totalSupply.add(new TokenAmount(this.liquidityToken, feeLiquidity));
+        } else {
+          totalSupplyAdjusted = totalSupply;
+        }
+      } else {
+        totalSupplyAdjusted = totalSupply;
+      }
+    }
+
+    return new TokenAmount(token, JSBI.divide(JSBI.multiply(liquidity.raw, this.reserveOf(token).raw), totalSupplyAdjusted.raw));
+  };
+
+  _createClass(Pairv2, [{
+    key: "token0Price",
+    get: function get() {
+      return new Price(this.token0, this.token1, this.tokenAmounts[0].raw, this.tokenAmounts[1].raw);
+    }
+    /**
+     * Returns the current mid price of the pair in terms of token1, i.e. the ratio of reserve0 to reserve1
+     */
+
+  }, {
+    key: "token1Price",
+    get: function get() {
+      return new Price(this.token1, this.token0, this.tokenAmounts[1].raw, this.tokenAmounts[0].raw);
+    }
+  }, {
+    key: "chainId",
+    get: function get() {
+      return this.token0.chainId;
+    }
+  }, {
+    key: "token0",
+    get: function get() {
+      return this.tokenAmounts[0].token;
+    }
+  }, {
+    key: "token1",
+    get: function get() {
+      return this.tokenAmounts[1].token;
+    }
+  }, {
+    key: "reserve0",
+    get: function get() {
+      return this.tokenAmounts[0];
+    }
+  }, {
+    key: "reserve1",
+    get: function get() {
+      return this.tokenAmounts[1];
+    }
+  }]);
+
+  return Pairv2;
 }();
 
 var Route = /*#__PURE__*/function () {
@@ -1568,13 +1764,16 @@ exports.Currency = Currency;
 exports.CurrencyAmount = CurrencyAmount;
 exports.ETHER = ETHER;
 exports.FACTORY_ADDRESS = FACTORY_ADDRESS;
+exports.FACTORY_ADDRESSv2 = FACTORY_ADDRESSv2;
 exports.Fetcher = Fetcher;
 exports.Fraction = Fraction;
 exports.INIT_CODE_HASH = INIT_CODE_HASH;
+exports.INIT_CODE_HASHv2 = INIT_CODE_HASHv2;
 exports.InsufficientInputAmountError = InsufficientInputAmountError;
 exports.InsufficientReservesError = InsufficientReservesError;
 exports.MINIMUM_LIQUIDITY = MINIMUM_LIQUIDITY;
 exports.Pair = Pair;
+exports.Pairv2 = Pairv2;
 exports.Percent = Percent;
 exports.Price = Price;
 exports.Route = Route;
